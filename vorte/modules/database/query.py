@@ -37,6 +37,7 @@ from vorte.modules.database.pagination import (
     OffsetPage,
     OffsetPaginator,
 )
+from vorte.modules.database.planner import QueryPlanner
 
 T = TypeVar("T", bound=VorteModel)
 
@@ -75,8 +76,9 @@ class QueryBuilder:
             await db.create(Post, {...})
     """
 
-    def __init__(self, connection: ConnectionManager):
+    def __init__(self, connection: ConnectionManager, planner: Optional[QueryPlanner] = None):
         self._connection = connection
+        self._planner = planner or QueryPlanner()
 
     # ------------------------------------------------------------------
     # Session shortcut
@@ -127,7 +129,9 @@ class QueryBuilder:
             List of model instances.
         """
         async with self._connection.session() as session:
-            result = await session.execute(select(model))
+            stmt = select(model)
+            stmt = self._planner.apply_active(stmt, model)
+            result = await session.execute(stmt)
             return list(result.scalars().all())
 
     async def create(self, model: Type[T], data: Dict[str, Any]) -> T:
@@ -443,7 +447,7 @@ class QueryBuilder:
                 .all()
             )
         """
-        return ChainableQuery(self._connection, model)
+        return ChainableQuery(self._connection, model, self._planner)
 
 
 class ChainableQuery(Generic[T]):
@@ -456,10 +460,12 @@ class ChainableQuery(Generic[T]):
     ``paginate()``.
     """
 
-    def __init__(self, connection: ConnectionManager, model: Type[T]):
+    def __init__(self, connection: ConnectionManager, model: Type[T], planner: QueryPlanner):
         self._connection = connection
         self._model = model
+        self._planner = planner
         self._stmt: Select = select(model)
+        self._stmt = self._planner.apply_active(self._stmt, model)
         self._load_options: List[Any] = []
         self._order_clauses: List[Any] = []
 
@@ -638,7 +644,7 @@ class ChainableQuery(Generic[T]):
         limit: Optional[int] = None,
     ) -> Union[OffsetPage[T], CursorPage[T]]:
         """Paginate the current query."""
-        builder = QueryBuilder(self._connection)
+        builder = QueryBuilder(self._connection, self._planner)
         return await builder.paginate(
             self._model,
             page=page,

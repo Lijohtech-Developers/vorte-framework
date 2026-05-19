@@ -65,7 +65,7 @@ class DashboardModule(Module):
             )
 
             # Catch-all route for SPA navigation
-            @app.fastapi.get(dashboard_path + "/{full_path:path}")
+            @app.fastapi.get(dashboard_path + "/{full_path:path}", include_in_schema=False)
             async def dashboard_spa(full_path: str):
                 """Serve the dashboard SPA."""
                 file_path = static_dir / full_path
@@ -77,7 +77,7 @@ class DashboardModule(Module):
                     return FileResponse(str(index_path))
                 return {"error": "Dashboard not built. Run: vorte dashboard:build"}
 
-            @app.fastapi.get(dashboard_path)
+            @app.fastapi.get(dashboard_path, include_in_schema=False)
             async def dashboard_index():
                 """Dashboard home page."""
                 index_path = static_dir / "index.html"
@@ -86,7 +86,7 @@ class DashboardModule(Module):
                 return {"error": "Dashboard not built. Run: vorte dashboard:build"}
         else:
             # No static files — redirect to API docs
-            @app.fastapi.get(dashboard_path)
+            @app.fastapi.get(dashboard_path, include_in_schema=False)
             async def dashboard_placeholder():
                 return {
                     "message": "Vorte Dashboard",
@@ -103,7 +103,7 @@ class DashboardModule(Module):
                     ],
                 }
 
-        @app.fastapi.get("/_vorte/dashboard/logs")
+        @app.fastapi.get("/_vorte/dashboard/logs", include_in_schema=False)
         async def dashboard_logs():
             """Fetch recent logs from the logging module."""
             from vorte.modules.logging import logger

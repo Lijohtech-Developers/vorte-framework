@@ -827,6 +827,9 @@ def cmd_dashboard_build():
 
 def cli():
     """Main CLI entry point."""
+    if os.getcwd() not in sys.path:
+        sys.path.insert(0, os.getcwd())
+
     args = sys.argv[1:]
     if not args:
         _print_help()
@@ -885,6 +888,20 @@ def cli():
         "queue:monitor": lambda: print("  Queue monitor requires running server"),
         "test": lambda: subprocess.run(["pytest", *sub_args], check=False),
         "help": _print_help,
+        # Blueprint manifest commands
+        "manifest:export": lambda: __import__('vorte.cli.manifest', fromlist=['cmd_manifest_export']).cmd_manifest_export(
+            app_import=next((a.split("=")[1] for a in sub_args if a.startswith("--app=")), "main:app"),
+            output=next((a.split("=")[1] for a in sub_args if a.startswith("--output=")), "vorte-manifest.json"),
+            routes_output=next((a.split("=")[1] for a in sub_args if a.startswith("--routes=")), "vorte-routes.json"),
+        ),
+        "manifest:validate": lambda: __import__('vorte.cli.manifest', fromlist=['cmd_manifest_validate']).cmd_manifest_validate(
+            app_import=next((a.split("=")[1] for a in sub_args if a.startswith("--app=")), "main:app"),
+            manifest=next((a.split("=")[1] for a in sub_args if a.startswith("--manifest=")), "vorte-manifest.json"),
+        ),
+        "manifest:types": lambda: __import__('vorte.cli.manifest', fromlist=['cmd_manifest_types']).cmd_manifest_types(
+            app_import=next((a.split("=")[1] for a in sub_args if a.startswith("--app=")), "main:app"),
+            output=next((a.split("=")[1] for a in sub_args if a.startswith("--output=")), "vorte.d.ts"),
+        ),
     }
 
     handler = commands.get(command)
@@ -952,6 +969,11 @@ def _print_help():
   TEST COMMANDS:
     vorte test [--coverage]                          Run test suite
     vorte dashboard:build                            Build the built-in dashboard
+
+  MANIFEST COMMANDS (Blueprint):
+    vorte manifest:export --app=main:app             Export OpenAPI + route tree to JSON
+    vorte manifest:validate --app=main:app           Detect schema drift vs saved manifest
+    vorte manifest:types --output=vorte.d.ts         Generate TypeScript interfaces
 """)
 
 

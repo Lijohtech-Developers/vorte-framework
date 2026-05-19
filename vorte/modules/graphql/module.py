@@ -181,7 +181,7 @@ class GraphQLModule(Module):
             app.container.register_instance(GraphQLBuilder, self._builder)
         app.graphql = self._builder
 
-        @app.post("/graphql")
+        @app.post("/graphql", include_in_schema=False)
         async def graphql_endpoint(request: Request):
             import json
             body = await request.json()
@@ -193,14 +193,14 @@ class GraphQLModule(Module):
             result = await self._execute(query, variables)
             return JSONResponse(content=result)
 
-        @app.get("/graphql/schema")
+        @app.get("/graphql/schema", include_in_schema=False)
         async def graphql_schema():
             schema = self._builder.build_schema_string()
             ops = self._builder.list_operations()
             return JSONResponse(content={"data": {"schema": schema, "operations": ops}})
 
         if self._playground:
-            @app.get("/graphql/playground")
+            @app.get("/graphql/playground", include_in_schema=False)
             async def graphql_playground():
                 return HTMLResponse(content=GRAPHQL_PLAYGROUND_HTML)
 

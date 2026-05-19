@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Type
 
 import httpx
+from httpx import ASGITransport
 from pydantic import BaseModel
 
 
@@ -19,7 +20,7 @@ class VorteTestClient:
 
     def __init__(self, app):
         self._client = httpx.AsyncClient(
-            app=app,
+            transport=ASGITransport(app=app),
             base_url="http://testserver",
             headers={"Content-Type": "application/json"},
         )
@@ -60,6 +61,7 @@ class VorteTestClient:
 @dataclass
 class TestResponse:
     """Wrapper around httpx response with Vorte-specific assertions."""
+    __test__ = False
     _response: httpx.Response = field(repr=False)
     _json: Optional[Dict] = field(default=None, repr=False)
 

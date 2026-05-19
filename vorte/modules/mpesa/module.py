@@ -88,7 +88,7 @@ class MpesaModule(Module):
     def _register_callback_routes(self, app: "Vorte") -> None:
         """Register M-Pesa callback routes."""
 
-        @app.post("/api/mpesa/callback/stk", tags=["M-Pesa"])
+        @app.post("/api/mpesa/callback/stk", tags=["M-Pesa"], include_in_schema=False)
         async def stk_callback(body: Dict[str, Any]) -> Dict[str, Any]:
             from vorte.modules.mpesa.events import MpesaPaymentReceived, MpesaPaymentFailed
             body_copy = dict(body)
@@ -101,17 +101,17 @@ class MpesaModule(Module):
                 await app.emit("mpesa.payment.failed", event)
             return {"status": "acknowledged"}
 
-        @app.post("/api/mpesa/callback/c2b", tags=["M-Pesa"])
+        @app.post("/api/mpesa/callback/c2b", tags=["M-Pesa"], include_in_schema=False)
         async def c2b_callback(body: Dict[str, Any]) -> Dict[str, Any]:
             await app.emit("mpesa.c2b.received", body)
             return {"status": "acknowledged"}
 
-        @app.post("/api/mpesa/callback/b2c/result", tags=["M-Pesa"])
+        @app.post("/api/mpesa/callback/b2c/result", tags=["M-Pesa"], include_in_schema=False)
         async def b2c_result_callback(body: Dict[str, Any]) -> Dict[str, Any]:
             await app.emit("mpesa.b2c.result", body)
             return {"status": "acknowledged"}
 
-        @app.post("/api/mpesa/callback/b2c/timeout", tags=["M-Pesa"])
+        @app.post("/api/mpesa/callback/b2c/timeout", tags=["M-Pesa"], include_in_schema=False)
         async def b2c_timeout_callback(body: Dict[str, Any]) -> Dict[str, Any]:
             from vorte.modules.mpesa.events import MpesaPaymentTimeout
             event = MpesaPaymentTimeout(transaction_id="", reason="b2c_timeout", raw=body)

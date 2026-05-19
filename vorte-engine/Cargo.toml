@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vorte-http",
+    "crates/vorte-router",
+    "crates/vorte-core",
+    "crates/vorte-py",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/vorte-framework/vorte-engine"
+
+[workspace.dependencies]
+tokio = { version = "1.42", features = ["full"] }
+hyper = { version = "1.5", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http = "1.1"
+http-body = "1.0"
+http-body-util = "0.1"
+bytes = "1.9"
+pyo3 = { version = "0.22", features = ["extension-module"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2.0"
+parking_lot = "0.12"
+tokio-rustls = "0.26"
+rustls-pemfile = "2.2"
+rustls = "0.23"
+smallvec = "1.13"

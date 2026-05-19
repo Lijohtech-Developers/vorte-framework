@@ -14,6 +14,8 @@ from typing import Any, Dict, Generic, List, Optional, TypeVar
 from fastapi import status
 from fastapi.responses import JSONResponse
 
+from vorte.core.serializer import FastSerializer
+
 T = TypeVar("T")
 
 
@@ -186,6 +188,10 @@ class VorteJSONResponse(JSONResponse):
             status_code=status_code,
             **kwargs,
         )
+
+    def render(self, content: Any) -> bytes:
+        """Use FastSerializer (orjson when available) for zero-overhead encoding."""
+        return FastSerializer.dumps(content)
 
 
 def success_response(

@@ -5,7 +5,7 @@ Dependency-injectable guards for protecting routes.
 Works with FastAPI's Depends() system.
 """
 
-from __future__ import annotations
+
 
 import hashlib
 import hmac

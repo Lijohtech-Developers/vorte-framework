@@ -55,17 +55,17 @@ class QueueModule(Module):
         app.include_router(self._router)
 
     def _setup_routes(self):
-        @self._router.get("/stats")
+        @self._router.get("/stats", include_in_schema=False)
         async def queue_stats():
             stats = await self._manager.stats()
             return success_response(stats)
 
-        @self._router.get("/failed")
+        @self._router.get("/failed", include_in_schema=False)
         async def failed_jobs():
             jobs = await self._manager.get_failed_jobs()
             return success_response(jobs)
 
-        @self._router.post("/retry/{job_id}")
+        @self._router.post("/retry/{job_id}", include_in_schema=False)
         async def retry_job(job_id: str):
             ok = await self._manager.retry_failed(job_id)
             if not ok:

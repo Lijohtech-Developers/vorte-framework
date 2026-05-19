@@ -143,6 +143,6 @@ class WebhooksModule(Module):
         if hasattr(app, 'container'):
             app.container.register_instance(WebhookSender, self.sender)
 
-        @app.post("/webhooks/{provider}")
+        @app.post("/webhooks/{provider}", include_in_schema=False)
         async def incoming_webhook(provider: str, request: dict):
             return success_response({"received": True, "provider": provider})

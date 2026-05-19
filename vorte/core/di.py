@@ -188,6 +188,38 @@ class Container:
         self._singleton_scope.reset()
         self._instances.clear()
 
+    def build(self) -> None:
+        """
+        Eagerly materialize all registered singleton bindings.
+
+        Called once at application startup so that the first real request
+        pays zero resolution cost. This is the Python-layer implementation of
+        VORTE's compile-time graph wiring.
+
+        Blueprint reference: §3 — Compile-Time Graph Wiring
+        """
+        for key, binding in list(self._bindings.items()):
+            if isinstance(binding.scope, SingletonScope) and not binding.is_async:
+                try:
+                    binding.scope.get(str(key), binding.factory)
+                except Exception:
+                    pass  # Don't fail startup for optional / conditional bindings
+
+    async def abuild(self) -> None:
+        """
+        Async variant of :meth:`build` — also resolves async factory singletons.
+        """
+        for key, binding in list(self._bindings.items()):
+            if isinstance(binding.scope, SingletonScope):
+                try:
+                    if binding.is_async:
+                        instance = await binding.factory()
+                        self._instances[key] = instance
+                    else:
+                        binding.scope.get(str(key), binding.factory)
+                except Exception:
+                    pass
+
     def create_child(self) -> "Container":
         """Create a child container for request scoping."""
         return Container(parent=self)
@@ -203,6 +235,51 @@ class Container:
         if request_id in self._request_scopes:
             self._request_scopes[request_id].reset()
             del self._request_scopes[request_id]
+
+
+# ---------------------------------------------------------------------------
+# Compile-Time Graph Wiring
+# ---------------------------------------------------------------------------
+
+# Registry of all @wire'd factories — populated at import time, resolved at
+# app startup via Container.build().
+_wire_registry: list[tuple[type, type]] = []
+
+
+def wire(interface: type, *, singleton: bool = True):
+    """
+    Class/function decorator that registers a factory with the global DI
+    container at *import time* and marks it for eager singleton resolution
+    during ``Container.build()``.
+
+    This moves dependency wiring from runtime request-handling into the
+    application startup phase — removing per-request resolution overhead.
+
+    Blueprint reference: §3 — Compile-Time Graph Wiring
+      "Mapping pointers statically before initialization."
+
+    Usage::
+
+        @wire(DatabaseService)
+        class PostgresDatabaseService:
+            async def connect(self): ...
+
+        @wire(EmailService)
+        async def email_factory() -> EmailService:
+            return SMTPEmailService(host=settings.mail_host)
+    """
+    def decorator(factory):
+        _wire_registry.append((interface, factory))
+        _global_container.register(
+            interface,
+            implementation=factory if isinstance(factory, type) else None,
+            factory=factory if not isinstance(factory, type) else None,
+            singleton=singleton,
+        )
+        factory._vorte_wired = True
+        factory._vorte_wire_interface = interface
+        return factory
+    return decorator
 
 
 # Global container

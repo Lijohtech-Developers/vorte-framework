@@ -1,0 +1,22 @@
+[package]
+name = "vorte-py"
+description = "PyO3 Python bindings for VORTE engine"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "_vorte_engine"
+crate-type = ["cdylib"]
+
+[dependencies]
+vorte-http = { path = "../vorte-http" }
+vorte-router = { path = "../vorte-router" }
+vorte-core = { path = "../vorte-core" }
+tokio = { workspace = true }
+hyper = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+pyo3 = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }

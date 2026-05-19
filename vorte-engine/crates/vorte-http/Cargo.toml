@@ -1,0 +1,13 @@
+[package]
+name = "vorte-http"
+description = "Zero-copy HTTP request/response types and parsing for VORTE engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+http = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+smallvec = { workspace = true }
+hyper = { workspace = true }
+http-body-util = { workspace = true }

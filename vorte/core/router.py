@@ -7,11 +7,47 @@ Provides routing utilities, versioning middleware, and route registration helper
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from enum import Enum
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.routing import APIRoute
+
+from vorte.modules.database.planner import active_relations
+
+
+def infer_relations(response_model: Any) -> Tuple[str, ...]:
+    """Infer database relations from a Pydantic response model's fields."""
+    if not response_model or not hasattr(response_model, "model_fields"):
+        return ()
+    # We naively return all field names. QueryPlanner safely ignores fields
+    # that don't exist as SQLAlchemy relationships on the target model.
+    return tuple(response_model.model_fields.keys())
+
+
+class VorteAPIRoute(APIRoute):
+    """Custom APIRoute that implements look-ahead query optimization."""
+    
+    def get_route_handler(self) -> Callable:
+        original_route_handler = super().get_route_handler()
+        
+        inferred = infer_relations(self.response_model)
+        manual = getattr(self.endpoint, "_vorte_relations", ())
+        merged_relations = tuple(set(inferred + manual))
+        
+        self.endpoint._vorte_relations = merged_relations
+        if merged_relations:
+            self.endpoint._vorte_select_related = True
+
+        async def custom_route_handler(request: Request) -> Response:
+            token = active_relations.set(merged_relations)
+            try:
+                return await original_route_handler(request)
+            finally:
+                active_relations.reset(token)
+
+        return custom_route_handler
+
 
 
 class VersioningStrategy(str, Enum):
@@ -44,6 +80,7 @@ class VorteAPIRouter(APIRouter):
         self._vorte_prefix = prefix
         self._vorte_tags = tags or []
         self._versioned_routes: List[VersionedRoute] = []
+        kwargs.setdefault("route_class", VorteAPIRoute)
         super().__init__(prefix=prefix, tags=tags, **kwargs)
     
     def add_api_route(

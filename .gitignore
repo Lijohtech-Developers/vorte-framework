@@ -5,6 +5,8 @@ __pycache__/
 *.so
 .Python
 env/
+venv/
+.venv/
 build/
 develop-eggs/
 dist/
@@ -22,6 +24,12 @@ wheels/
 *.egg
 .env
 vorte.db
+.pytest_cache/
+.coverage
+
+# Rust
+target/
+Cargo.lock
 
 # Node.js
 node_modules/

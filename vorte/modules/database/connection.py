@@ -76,25 +76,29 @@ class ConnectionManager:
         if self._initialized:
             return
 
-        self._engine = create_async_engine(
-            self._url,
-            pool_size=self._pool_size,
-            max_overflow=self._max_overflow,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-            echo=self._echo,
-        )
+        engine_kwargs = {
+            "pool_pre_ping": True,
+            "pool_recycle": 3600,
+            "echo": self._echo,
+        }
+        if not self._url.startswith("sqlite"):
+            engine_kwargs["pool_size"] = self._pool_size
+            engine_kwargs["max_overflow"] = self._max_overflow
+
+        self._engine = create_async_engine(self._url, **engine_kwargs)
 
         # Create read-replica engines (if configured)
         for replica_url in self._read_replica_urls:
-            replica_engine = create_async_engine(
-                replica_url,
-                pool_size=self._pool_size,
-                max_overflow=self._max_overflow,
-                pool_pre_ping=True,
-                pool_recycle=3600,
-                echo=self._echo,
-            )
+            replica_kwargs = {
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+                "echo": self._echo,
+            }
+            if not replica_url.startswith("sqlite"):
+                replica_kwargs["pool_size"] = self._pool_size
+                replica_kwargs["max_overflow"] = self._max_overflow
+
+            replica_engine = create_async_engine(replica_url, **replica_kwargs)
             self._read_engines.append(replica_engine)
 
         self._session_factory = async_sessionmaker(

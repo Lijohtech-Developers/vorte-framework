@@ -1,0 +1,199 @@
+import pytest
+from vorte import Vorte, ModulePriority
+from vorte.core.module import Module, ModuleMeta, ModuleState
+from vorte.testing import VorteTestClient
+
+class CustomTestModule(Module):
+    meta = ModuleMeta(
+        name="custom_test_module",
+        description="A custom module for testing app integration",
+        priority=ModulePriority.ROUTES,
+    )
+
+    def __init__(self, **config):
+        super().__init__(**config)
+        self.registered_called = False
+        self.startup_called = False
+        self.shutdown_called = False
+
+    def register(self, app: Vorte) -> None:
+        self.registered_called = True
+        
+        # Register a custom route for this module
+        @app.get("/custom-module-route")
+        async def custom_route():
+            return {"status": "ok", "module": self.meta.name}
+
+    async def on_startup(self) -> None:
+        self.startup_called = True
+
+    async def on_shutdown(self) -> None:
+        self.shutdown_called = True
+
+
+@pytest.mark.asyncio
+async def test_app_init_without_autoload():
+    """Test app initialization when auto_load=False."""
+    app = Vorte(auto_load=False, title="NoAutoLoadApp", version="2.0.0")
+    assert app.fastapi.title == "NoAutoLoadApp"
+    assert app.fastapi.version == "2.0.0"
+    assert len(app.modules.get_all()) == 0
+
+
+@pytest.mark.asyncio
+async def test_app_init_with_autoload():
+    """Test app initialization when auto_load=True."""
+    # Exclude dashboard for faster and simpler test loading
+    app = Vorte(auto_load=True, exclude_modules=["dashboard"])
+    # Should load all modules except dashboard
+    loaded_modules = app.modules.get_all()
+    assert len(loaded_modules) > 0
+    assert "dashboard" not in loaded_modules
+    assert "auth" in loaded_modules
+    assert "ai" in loaded_modules
+
+
+@pytest.mark.asyncio
+async def test_app_lifecycle_and_custom_module():
+    """Test app lifecycle, startup/shutdown events, and module loading."""
+    app = Vorte(auto_load=False)
+    module = CustomTestModule()
+    
+    app.register(module)
+    assert module.registered_called is True
+    assert module.get_state() == ModuleState.READY
+    assert module.app == app
+
+    startup_hook_called = False
+    shutdown_hook_called = False
+
+    @app.on_startup
+    async def app_startup():
+        nonlocal startup_hook_called
+        startup_hook_called = True
+
+    @app.on_shutdown
+    async def app_shutdown():
+        nonlocal shutdown_hook_called
+        shutdown_hook_called = True
+
+    # Simulate ASGI startup via the testing helper
+    await app._run_startup()
+
+    assert module.startup_called is True
+    assert startup_hook_called is True
+
+    # Test the custom route registered by the module
+    async with VorteTestClient(app) as client:
+        response = await client.get("/custom-module-route")
+        assert response.status_code == 200
+        assert response.json_data == {"status": "ok", "module": "custom_test_module"}
+
+    # Simulate ASGI shutdown via the testing helper
+    await app._run_shutdown()
+
+    assert module.shutdown_called is True
+    assert shutdown_hook_called is True
+
+
+@pytest.mark.asyncio
+async def test_built_in_endpoints():
+    """Test ready, live, and info endpoints."""
+    app = Vorte(auto_load=False)
+    
+    async with VorteTestClient(app) as client:
+        # Readiness Probe
+        resp = await client.get("/ready")
+        assert resp.status_code == 200
+        assert resp.json_data == {"status": "ready"}
+
+        # Liveness Probe
+        resp = await client.get("/live")
+        assert resp.status_code == 200
+        assert resp.json_data == {"status": "alive"}
+
+        # Framework Info
+        resp = await client.get("/_vorte/info")
+        assert resp.status_code == 200
+        data = resp.json_data
+        assert data["framework"] == "Vorte"
+        assert "python" in data
+        assert "platform" in data
+        assert data["modules_loaded"] == 0
+
+
+@pytest.mark.asyncio
+async def test_health_check_endpoint():
+    """Test health check endpoint with active modules."""
+    app = Vorte(auto_load=False)
+    
+    # Register custom module
+    module = CustomTestModule()
+    app.register(module)
+
+    # Directly run startup to set app.events or other properties if any
+    await app._run_startup()
+
+    async with VorteTestClient(app) as client:
+        resp = await client.get("/health")
+        assert resp.status_code == 200
+        data = resp.json_data
+        assert data["status"] == "healthy"
+        assert "custom_test_module" in data["modules"]
+        assert data["modules"]["custom_test_module"]["status"] == "healthy"
+
+    # Simulate a degraded module status
+    class BrokenModule(Module):
+        meta = ModuleMeta(name="broken_module")
+        def register(self, app): pass
+        async def health_check(self):
+            return {"module": "broken_module", "status": "unhealthy", "error": "Database down"}
+
+    app2 = Vorte(auto_load=False)
+    app2.register(BrokenModule())
+    
+    async with VorteTestClient(app2) as client:
+        resp = await client.get("/health")
+        assert resp.status_code == 503
+        data = resp.json_data
+        assert data["status"] == "degraded"
+        assert data["modules"]["broken_module"]["status"] == "unhealthy"
+
+
+@pytest.mark.asyncio
+async def test_metrics_and_dashboard_api():
+    """Test request recording metrics and dashboard endpoint metrics."""
+    app = Vorte(auto_load=False)
+    
+    # Record a successful request
+    app.record_request("/api/users", "GET", 200, 45.2)
+    assert app._request_metrics["total"] == 1
+    assert app._request_metrics["errors"] == 0
+    assert app._request_metrics["by_path"]["/api/users"]["count"] == 1
+    assert app._request_metrics["by_path"]["/api/users"]["total_ms"] == 45.2
+
+    # Record a failed request
+    app.record_request("/api/users", "POST", 500, 120.8)
+    assert app._request_metrics["total"] == 2
+    assert app._request_metrics["errors"] == 1
+    assert app._request_metrics["by_path"]["/api/users"]["count"] == 2
+    assert app._request_metrics["by_path"]["/api/users"]["errors"] == 1
+    assert app._request_metrics["by_method"]["POST"] == 1
+
+    # Check dashboard config endpoint
+    async with VorteTestClient(app) as client:
+        resp = await client.get("/_vorte/dashboard/config")
+        assert resp.status_code == 200
+        assert resp.json_data["app_name"] == "VorteApp"
+
+        # Check dashboard metrics endpoint
+        resp = await client.get("/_vorte/dashboard/metrics")
+        assert resp.status_code == 200
+        assert resp.json_data["total"] == 2
+        assert resp.json_data["errors"] == 1
+
+        # Check dashboard overview endpoint
+        resp = await client.get("/_vorte/dashboard/overview")
+        assert resp.status_code == 200
+        assert resp.json_data["app"]["name"] == "VorteApp"
+        assert resp.json_data["metrics"]["total"] == 2

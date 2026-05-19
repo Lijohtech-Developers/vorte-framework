@@ -40,7 +40,7 @@ class SocketModule(Module):
 
     def _setup_routes(self, app) -> None:
         # Stats endpoint
-        @app.get("/sockets/stats")
+        @app.get("/sockets/stats", include_in_schema=False)
         async def ws_stats():
             return success_response(self.manager.get_stats())
 

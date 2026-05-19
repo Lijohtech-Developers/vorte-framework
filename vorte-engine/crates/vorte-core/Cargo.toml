@@ -1,0 +1,28 @@
+[package]
+name = "vorte-core"
+description = "Core HTTP server engine built on hyper/tokio for VORTE"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["http1", "http2"]
+http1 = ["hyper/http1"]
+http2 = ["hyper/http2"]
+tls = ["tokio-rustls", "rustls", "rustls-pemfile"]
+
+[dependencies]
+vorte-http = { path = "../vorte-http" }
+vorte-router = { path = "../vorte-router" }
+tokio = { workspace = true }
+hyper = { workspace = true, features = ["server"] }
+hyper-util = { workspace = true }
+http = { workspace = true }
+http-body = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+tokio-rustls = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-pemfile = { workspace = true, optional = true }

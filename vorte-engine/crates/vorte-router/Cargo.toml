@@ -1,0 +1,10 @@
+[package]
+name = "vorte-router"
+description = "Zero-allocation radix tree router for VORTE engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+vorte-http = { path = "../vorte-http" }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }

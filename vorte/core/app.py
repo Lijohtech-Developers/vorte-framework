@@ -15,6 +15,8 @@ Usage:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import asyncio
 import time
 import traceback
@@ -37,6 +39,9 @@ from vorte.core.response import (
 )
 from vorte.core.router import VorteAPIRouter, VersioningMiddleware, VersioningStrategy
 from vorte.core.di import Container, _global_container
+from vorte.core.executor import VorteExecutor
+from vorte.core.typemirror import TypeMirror
+from vorte.modules.database.planner import QueryPlanner
 
 
 class Vorte:
@@ -144,6 +149,9 @@ class Vorte:
         self._events: Dict[str, List[Callable]] = {}
         self._startup_hooks: List[Callable] = []
         self._shutdown_hooks: List[Callable] = []
+        self._executor = VorteExecutor()
+        self._type_mirror = TypeMirror()
+        self._query_planner = QueryPlanner()
         self._versioning = VersioningMiddleware(
             default_version=self._settings.default_version,
             strategy=VersioningStrategy.URL,
@@ -158,6 +166,25 @@ class Vorte:
         }
         self._start_time: Optional[float] = None
         
+        # Build the lifespan handler that drives startup/shutdown
+        @asynccontextmanager
+        async def _lifespan(fastapi_app):
+            # ---- startup ----
+            self._start_time = time.time()
+            # Eager DI graph wiring — Blueprint §3 Compile-Time Graph Wiring
+            await self._container.abuild()
+            await self._module_registry.startup_all()
+            for hook in self._startup_hooks:
+                await hook()
+            # Build TypeMirror from registered routes
+            self._type_mirror = TypeMirror.from_app(self)
+            yield
+            # ---- shutdown ----
+            for hook in self._shutdown_hooks:
+                await hook()
+            await self._module_registry.shutdown_all()
+            self._executor.shutdown(wait=False)
+
         # Create underlying FastAPI app
         self.fastapi = FastAPI(
             title=title or self._settings.app_name,
@@ -165,14 +192,12 @@ class Vorte:
             version=version or "1.0.0",
             docs_url="/docs" if self._settings.app_debug else None,
             redoc_url="/redoc" if self._settings.app_debug else None,
+            lifespan=_lifespan,
             **kwargs,
         )
         
         # Register built-in middleware
         self._setup_middleware()
-        
-        # Register built-in lifecycle
-        self._setup_lifecycle()
         
         # Register built-in routes
         self._setup_builtin_routes()
@@ -235,32 +260,12 @@ class Vorte:
             
             return response
     
-    def _setup_lifecycle(self) -> None:
-        """Setup application lifecycle hooks."""
-        
-        @self.fastapi.on_event("startup")
-        async def startup():
-            self._start_time = time.time()
-            # Startup all modules (async connections, etc.)
-            await self._module_registry.startup_all()
-            
-            # Run custom startup hooks
-            for hook in self._startup_hooks:
-                await hook()
-        
-        @self.fastapi.on_event("shutdown")
-        async def shutdown():
-            # Run custom shutdown hooks
-            for hook in self._shutdown_hooks:
-                await hook()
-            
-            # Shutdown all modules
-            await self._module_registry.shutdown_all()
+    # _setup_lifecycle is superseded by the lifespan context manager in __init__.
     
     def _setup_builtin_routes(self) -> None:
         """Setup built-in routes."""
         
-        @self.fastapi.get("/health")
+        @self.fastapi.get("/health", include_in_schema=False)
         async def health_check():
             """Full system health check."""
             results = await self._module_registry.health_check_all()
@@ -276,17 +281,17 @@ class Vorte:
                 status_code=200 if all_healthy else 503,
             )
         
-        @self.fastapi.get("/ready")
+        @self.fastapi.get("/ready", include_in_schema=False)
         async def readiness_check():
             """Kubernetes readiness probe."""
             return JSONResponse(content={"status": "ready"})
         
-        @self.fastapi.get("/live")
+        @self.fastapi.get("/live", include_in_schema=False)
         async def liveness_check():
             """Kubernetes liveness probe."""
             return JSONResponse(content={"status": "alive"})
         
-        @self.fastapi.get("/_vorte/info")
+        @self.fastapi.get("/_vorte/info", include_in_schema=False)
         async def vorte_info():
             """Framework and runtime information."""
             import platform
@@ -303,7 +308,7 @@ class Vorte:
     def _setup_dashboard_api(self) -> None:
         """Setup dashboard API routes for the admin panel."""
         
-        @self.fastapi.get("/_vorte/dashboard/overview")
+        @self.fastapi.get("/_vorte/dashboard/overview", include_in_schema=False)
         async def dashboard_overview():
             """Dashboard overview data — modules, routes, metrics, uptime."""
             import platform
@@ -343,7 +348,7 @@ class Vorte:
                 },
             })
         
-        @self.fastapi.get("/_vorte/dashboard/modules")
+        @self.fastapi.get("/_vorte/dashboard/modules", include_in_schema=False)
         async def dashboard_modules():
             """Detailed module information."""
             modules = self._module_registry.list_modules()
@@ -352,7 +357,7 @@ class Vorte:
                 "modules": modules,
             })
         
-        @self.fastapi.get("/_vorte/dashboard/routes")
+        @self.fastapi.get("/_vorte/dashboard/routes", include_in_schema=False)
         async def dashboard_routes():
             """All registered routes."""
             routes = self.get_routes()
@@ -361,7 +366,7 @@ class Vorte:
                 "routes": routes,
             })
         
-        @self.fastapi.get("/_vorte/dashboard/health")
+        @self.fastapi.get("/_vorte/dashboard/health", include_in_schema=False)
         async def dashboard_health():
             """Health check details."""
             results = await self._module_registry.health_check_all()
@@ -372,7 +377,7 @@ class Vorte:
                 "modules": results,
             })
         
-        @self.fastapi.get("/_vorte/dashboard/config")
+        @self.fastapi.get("/_vorte/dashboard/config", include_in_schema=False)
         async def dashboard_config():
             """Non-sensitive configuration."""
             s = self._settings
@@ -395,7 +400,7 @@ class Vorte:
                 "dashboard": {"enabled": s.dashboard.enabled, "path": s.dashboard.path},
             })
         
-        @self.fastapi.get("/_vorte/dashboard/events")
+        @self.fastapi.get("/_vorte/dashboard/events", include_in_schema=False)
         async def dashboard_events():
             """Registered events and listeners."""
             return JSONResponse(content={
@@ -405,7 +410,7 @@ class Vorte:
                 }
             })
         
-        @self.fastapi.get("/_vorte/dashboard/metrics")
+        @self.fastapi.get("/_vorte/dashboard/metrics", include_in_schema=False)
         async def dashboard_metrics():
             """Request metrics."""
             return JSONResponse(content=self._request_metrics)
@@ -424,6 +429,21 @@ class Vorte:
     def container(self) -> Container:
         """Get dependency injection container."""
         return self._container
+
+    @property
+    def executor(self) -> VorteExecutor:
+        """Work-stealing executor for sync/async route dispatch."""
+        return self._executor
+
+    @property
+    def type_mirror(self) -> TypeMirror:
+        """TypeScript type mirror populated at startup from route schemas."""
+        return self._type_mirror
+
+    @property
+    def query_planner(self) -> QueryPlanner:
+        """N+1 look-ahead query planner."""
+        return self._query_planner
     
     @property
     def events(self) -> Dict[str, List[Callable]]:
@@ -547,6 +567,30 @@ class Vorte:
         """Add a shutdown hook."""
         self._shutdown_hooks.append(func)
         return func
+
+    # ---- Testing Helpers ----
+
+    async def _run_startup(self) -> None:
+        """Trigger the startup sequence manually.
+
+        Intended for use in tests that need to simulate the ASGI startup
+        phase without actually serving HTTP traffic.  Mirrors the logic
+        inside the lifespan context manager.
+        """
+        import time as _time
+        self._start_time = _time.time()
+        await self._module_registry.startup_all()
+        for hook in self._startup_hooks:
+            await hook()
+
+    async def _run_shutdown(self) -> None:
+        """Trigger the shutdown sequence manually.
+
+        Pair to :meth:`_run_startup` for test teardown.
+        """
+        for hook in self._shutdown_hooks:
+            await hook()
+        await self._module_registry.shutdown_all()
     
     # ---- Configuration ----
     
