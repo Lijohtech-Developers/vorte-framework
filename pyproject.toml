@@ -45,12 +45,6 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-[project.urls]
-Homepage = "https://github.com/Lijohtech-Developers/vorte-framework"
-Documentation = "https://github.com/Lijohtech-Developers/vorte-framework/tree/main/docs"
-Repository = "https://github.com/Lijohtech-Developers/vorte-framework"
-Issues = "https://github.com/Lijohtech-Developers/vorte-framework/issues"
-Changelog = "https://github.com/Lijohtech-Developers/vorte-framework/blob/main/CHANGELOG.md"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
@@ -70,6 +64,13 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "orjson>=3.10.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Lijohtech-Developers/vorte-framework"
+Documentation = "https://github.com/Lijohtech-Developers/vorte-framework/tree/main/docs"
+Repository = "https://github.com/Lijohtech-Developers/vorte-framework"
+Issues = "https://github.com/Lijohtech-Developers/vorte-framework/issues"
+Changelog = "https://github.com/Lijohtech-Developers/vorte-framework/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 full = [
